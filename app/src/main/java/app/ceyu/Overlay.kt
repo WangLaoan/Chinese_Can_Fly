@@ -34,28 +34,32 @@ class Overlay(private val context: Context, private val capture: () -> Unit, pri
         reposition()
         wm.addView(handle, params)
         var startX = 0f; var startY = 0f; var baseY = 0; var downAt = 0L; var ended = false
+        var movedHorizontally = false; var movedVertically = false
         val longExit = Runnable { ended = true; emergency() }
         handle.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = event.rawX; startY = event.rawY; baseY = params.y; downAt = android.os.SystemClock.uptimeMillis(); ended = false
+                    movedHorizontally = false; movedVertically = false
                     handler.postDelayed(longExit, 3000)
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    if (kotlin.math.abs(event.rawY - startY) > dp(10)) {
+                    movedHorizontally = movedHorizontally || startX - event.rawX > dp(35)
+                    movedVertically = movedVertically || kotlin.math.abs(event.rawY - startY) > dp(10)
+                    if (movedVertically && !movedHorizontally) {
                         handler.removeCallbacks(longExit)
                         params.y = (baseY.toFloat() + event.rawY - startY).toInt().coerceIn(dp(40), wm.currentWindowMetrics.bounds.height() - dp(90))
                         runCatching { wm.updateViewLayout(handle, params) }
                     }
-                    if (startX - event.rawX > dp(35)) handler.removeCallbacks(longExit)
+                    if (movedHorizontally) handler.removeCallbacks(longExit)
                 }
                 MotionEvent.ACTION_UP -> {
                     handler.removeCallbacks(longExit)
                     val elapsed = android.os.SystemClock.uptimeMillis() - downAt
                     if (!ended) {
                         when {
-                            kotlin.math.abs(event.rawY - startY) > dp(10) -> Session.action("settings", JSONObject().put("handleY", params.y.toDouble() / wm.currentWindowMetrics.bounds.height()))
-                            startX - event.rawX > dp(35) -> openPanel()
+                            movedHorizontally -> openPanel()
+                            movedVertically -> Session.action("settings", JSONObject().put("handleY", params.y.toDouble() / wm.currentWindowMetrics.bounds.height()))
                             elapsed >= 1000 -> Session.setSilent(false)
                             android.os.SystemClock.uptimeMillis() - lastUp < 320 -> { handler.removeCallbacks(singleTap); Session.setSilent(true); lastUp = 0 }
                             else -> { lastUp = android.os.SystemClock.uptimeMillis(); handler.postDelayed(singleTap, 320) }
@@ -96,7 +100,7 @@ class Overlay(private val context: Context, private val capture: () -> Unit, pri
         handler.postDelayed(hideTip, Session.settings().optInt("duration", 3) * 1000L)
     }
     private fun removeTip() { handler.removeCallbacks(hideTip); tip?.let { runCatching { wm.removeView(it) } }; tip = null; pinned = false }
-    fun hideOutput() { removeTip(); panel?.let { runCatching { wm.removeView(it) } }; panel = null }
+    fun hideOutput() { removeTip(); panel?.let { runCatching { wm.removeView(it) } }; panel = null; voice.stop() }
     private fun openPanel() {
         hideOutput()
         val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(12), dp(18), dp(16)); background = bg("#FCFEFD") }

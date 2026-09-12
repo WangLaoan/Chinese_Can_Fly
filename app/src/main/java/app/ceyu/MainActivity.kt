@@ -31,6 +31,7 @@ class MainActivity : Activity() {
     private var password = ""
     private var avatarPerson = ""
     private var capturePending = false
+    private var awaitingNotificationPermission = false
     private val listener: () -> Unit = { render() }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,7 +70,9 @@ class MainActivity : Activity() {
     }
     override fun onResume() {
         super.onResume()
-        if (capturePending && Settings.canDrawOverlays(this)) { capturePending = false; requestCapture() }
+        if (capturePending && !awaitingNotificationPermission && Settings.canDrawOverlays(this)) {
+            capturePending = false; requestCapture()
+        }
         render()
     }
     private fun render() {
@@ -86,9 +89,23 @@ class MainActivity : Activity() {
             return
         }
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            capturePending = true
+            awaitingNotificationPermission = true
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 50)
+            return
         }
+        startCaptureAuthorization()
+    }
+    private fun startCaptureAuthorization() {
         startActivityForResult(getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent(), 10)
+    }
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != 50) return
+        awaitingNotificationPermission = false
+        if (!capturePending || !Settings.canDrawOverlays(this)) return
+        capturePending = false
+        startCaptureAuthorization()
     }
     inner class Bridge {
         @JavascriptInterface fun send(action: String, payload: String) {
@@ -134,7 +151,7 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK || data == null) {
             password = ""
-            if (requestCode == 10) Session.inform("未开启屏幕共享；仍可粘贴或分享文字分析")
+            if (requestCode == 10) { capturePending = false; Session.inform("未开启屏幕共享；仍可粘贴或分享文字分析") }
             return
         }
         if (requestCode == 10) {
