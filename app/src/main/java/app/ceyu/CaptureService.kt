@@ -12,6 +12,9 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.*
 import android.view.WindowManager
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 
 class CaptureService : Service() {
     private val handler = Handler(Looper.getMainLooper())
@@ -19,6 +22,7 @@ class CaptureService : Service() {
     private var display: VirtualDisplay? = null
     private var reader: ImageReader? = null
     private var overlay: Overlay? = null
+    private var recognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
     private var wanted = false
     private var recognizing = false
     private var alive = true
@@ -98,10 +102,21 @@ class CaptureService : Service() {
                 } catch (_: Exception) { recognizing = false; Session.fail("无法读取屏幕图像") }
                 finally { image.close() }
                 val frame = bitmap ?: return@setOnImageAvailableListener
-                if (alive && epoch == captureEpoch && expected == Session.title) {
-                    Session.fail("当前构建已完成屏幕授权和取帧；中文 OCR 适配将在下一构建接入。请先粘贴或分享聊天文字。")
-                }
-                frame.recycle(); recognizing = false; if (alive) overlay?.refresh()
+                recognizer.process(InputImage.fromBitmap(frame, 0)).addOnSuccessListener { text ->
+                    if (!alive || epoch != captureEpoch || expected != Session.title || Session.paused) return@addOnSuccessListener
+                    val lines = text.textBlocks.flatMap { it.lines }.sortedBy { it.boundingBox?.top ?: 0 }
+                    if (!Analysis.matchesTitle(lines.map { it.text to (it.boundingBox?.top ?: Int.MAX_VALUE) }, expected, height)) {
+                        Session.fail("当前画面没有匹配的聊天标题，未发送分析。请回到目标聊天或修改昵称。")
+                    } else {
+                        val transcript = lines.filter { (it.boundingBox?.top ?: 0) > height * 0.13 }.joinToString("\n") { line ->
+                            val box = line.boundingBox
+                            val side = if (box != null && box.left > width * 0.5) "[右侧，可能是我] " else "[左侧或系统文字] "
+                            side + line.text
+                        }
+                        if (transcript.isBlank()) Session.fail("没有识别到聊天文字") else Session.readScreen(transcript)
+                    }
+                }.addOnFailureListener { if (alive) Session.fail("本地文字识别失败，请重试") }
+                    .addOnCompleteListener { frame.recycle(); recognizing = false; if (alive) overlay?.refresh() }
             }, handler)
         }
         val density = resources.configuration.densityDpi
@@ -136,7 +151,7 @@ class CaptureService : Service() {
     override fun onDestroy() {
         alive = false; captureEpoch++; handler.removeCallbacksAndMessages(null)
         Session.unsubscribe(listener); unregisterReceiver(screenOff)
-        overlay?.close(); reader?.close(); display?.release(); projection?.stop()
+        overlay?.close(); reader?.close(); display?.release(); projection?.stop(); recognizer.close()
         Session.capturing = false; Session.cancel(); Session.publish()
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
