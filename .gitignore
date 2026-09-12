@@ -5,6 +5,7 @@ local.properties
 node_modules/
 artifacts/*.apk
 artifacts/*.aab
+artifacts/device-*.png
 *.jks
 *.keystore
 .env

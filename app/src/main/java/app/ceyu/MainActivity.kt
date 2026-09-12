@@ -34,7 +34,6 @@ class MainActivity : Activity() {
     private val listener: () -> Unit = { render() }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         Session.init(this)
         web = WebView(this)
         web.settings.javaScriptEnabled = true
