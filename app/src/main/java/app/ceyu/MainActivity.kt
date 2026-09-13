@@ -32,9 +32,12 @@ class MainActivity : Activity() {
     private var avatarPerson = ""
     private var capturePending = false
     private var awaitingNotificationPermission = false
+    private var autoStartRequested = false
+    private var normalLaunch = false
     private val listener: () -> Unit = { render() }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        normalLaunch = intent.getBooleanExtra("openSettings", false) || intent.action == Intent.ACTION_SEND
         Session.init(this)
         web = WebView(this)
         web.settings.javaScriptEnabled = true
@@ -46,7 +49,13 @@ class MainActivity : Activity() {
         web.addJavascriptInterface(Bridge(), "Ceyu")
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = true
-            override fun onPageFinished(view: WebView, url: String) { ready = true; render(); handleIntent(intent) }
+            override fun onPageFinished(view: WebView, url: String) {
+                ready = true; render(); handleIntent(intent)
+                if (!normalLaunch && !autoStartRequested) {
+                    autoStartRequested = true
+                    if (Session.capturing) moveTaskToBack(true) else requestCapture()
+                }
+            }
         }
         web.setOnApplyWindowInsetsListener { view, insets ->
             val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime())
@@ -81,7 +90,6 @@ class MainActivity : Activity() {
         web.evaluateJavascript("window.receiveState(${JSONObject.quote(state.toString())})", null)
     }
     private fun requestCapture() {
-        if (Session.title.isBlank()) { Session.fail("先填写当前聊天顶部显示的完整昵称，用于防止识别到其他对话"); return }
         if (Session.capturing) { Session.inform("屏幕共享已启动；切到目标聊天后点击侧边把手"); return }
         if (!Settings.canDrawOverlays(this)) {
             capturePending = true
@@ -157,6 +165,7 @@ class MainActivity : Activity() {
         if (requestCode == 10) {
             startForegroundService(Intent(this, CaptureService::class.java).putExtra("code", resultCode).putExtra("grant", data))
             Session.inform("已开启共享。切到目标聊天，点击侧边把手读取；向内滑展开菜单。")
+            moveTaskToBack(true)
             return
         }
         val uri = data.data ?: return

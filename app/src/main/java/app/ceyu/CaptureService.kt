@@ -47,7 +47,7 @@ class CaptureService : Service() {
         Session.subscribe(listener)
     }
     private fun notification(): Notification {
-        val home = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val home = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java).putExtra("openSettings", true), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val stop = PendingIntent.getService(this, 1, Intent(this, CaptureService::class.java).setAction("stop"), PendingIntent.FLAG_IMMUTABLE)
         val pause = PendingIntent.getService(this, 2, Intent(this, CaptureService::class.java).setAction("pause"), PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, "capture").setSmallIcon(R.drawable.ic_ceyu).setContentTitle("侧语 · 屏幕共享已开启")
@@ -144,7 +144,7 @@ class CaptureService : Service() {
     }
     private fun finish() {
         Session.cancel()
-        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("finishSession", true))
+        startActivity(Intent(this, MainActivity::class.java).putExtra("openSettings", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("finishSession", true))
         stopSelf()
     }
     private fun emergency() { Session.clear(); Session.publish(); stopSelf() }

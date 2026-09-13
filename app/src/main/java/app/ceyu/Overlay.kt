@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.view.*
 import android.widget.*
 import org.json.JSONObject
@@ -14,7 +15,7 @@ class Overlay(private val context: Context, private val capture: () -> Unit, pri
     private val handler = Handler(Looper.getMainLooper())
     private val voice = EarVoice(context)
     private val handle = View(context)
-    private val params = WindowManager.LayoutParams(dp(20), dp(38), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+    private val params = WindowManager.LayoutParams(dp(28), dp(42), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_SECURE, android.graphics.PixelFormat.TRANSLUCENT).apply {
         gravity = Gravity.TOP or Gravity.RIGHT
     }
@@ -29,7 +30,7 @@ class Overlay(private val context: Context, private val capture: () -> Unit, pri
     private fun dp(v: Int) = (v * context.resources.displayMetrics.density).toInt()
     private fun bg(color: String, radius: Float = 6f) = GradientDrawable().apply { setColor(Color.parseColor(color)); cornerRadius = dp(radius.toInt()).toFloat() }
     fun show() {
-        handle.background = android.graphics.drawable.InsetDrawable(bg("#66798780", 3f), dp(13), dp(3), dp(2), dp(3))
+        handle.background = android.graphics.drawable.InsetDrawable(bg("#99566A62", 3f), dp(14), dp(5), dp(4), dp(5))
         handle.contentDescription = "侧语：单击读取，向内滑动展开"
         reposition()
         wm.addView(handle, params)
@@ -112,6 +113,32 @@ class Overlay(private val context: Context, private val capture: () -> Unit, pri
             }, LinearLayout.LayoutParams(-1, dp(48)))
         }
         label("侧语 · " + if (Session.paused) "已暂停" else if (Session.silent) "已静默" else "线上会话", 17f)
+        val titleInput = EditText(context).apply {
+            hint = "聊天窗口顶部显示的昵称"
+            setText(Session.title)
+            textSize = 14f
+            setSingleLine(true)
+            inputType = InputType.TYPE_CLASS_TEXT
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+        }
+        list.addView(titleInput, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(8) })
+        val contextInput = EditText(context).apply {
+            hint = "需要时补充几句上下文（可留空）"
+            setText(Session.background)
+            textSize = 14f
+            minLines = 2
+            maxLines = 4
+            gravity = Gravity.TOP
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+        }
+        list.addView(contextInput, LinearLayout.LayoutParams(-1, dp(92)).apply { bottomMargin = dp(4) })
+        action("保存对象与上下文") {
+            Session.action("draft", JSONObject().put("title", titleInput.text.toString()).put("background", contextInput.text.toString()))
+            Session.inform("对象和上下文已暂存")
+            hideOutput()
+            openPanel()
+        }
         if (!Session.silent) {
             if (Session.busy) label("正在分析…")
             if (Session.error.isNotBlank()) label(Session.error)
@@ -131,13 +158,13 @@ class Overlay(private val context: Context, private val capture: () -> Unit, pri
         action("读取当前聊天") { hideOutput(); capture() }
         action(if (Session.paused) "恢复分析" else "暂停分析") { Session.togglePause(); openPanel() }
         action(if (Session.silent) "恢复提示" else "静默提示") { Session.toggleSilent(); hideOutput() }
-        action("背景、通道与档案") { hideOutput(); context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        action("背景、通道与档案") { hideOutput(); context.startActivity(Intent(context, MainActivity::class.java).putExtra("openSettings", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         action("结束并选择保存") { finish() }
         action("关闭") { hideOutput() }
         panel = ScrollView(context).apply { addView(list) }
         val bounds = wm.currentWindowMetrics.bounds
         val p = WindowManager.LayoutParams(minOf(dp(320), bounds.width() - dp(36)), minOf(dp(580), bounds.height() - dp(120)),
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, WindowManager.LayoutParams.FLAG_SECURE,
             android.graphics.PixelFormat.TRANSLUCENT).apply { gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL; x = dp(16) }
         runCatching { wm.addView(panel, p) }
     }
